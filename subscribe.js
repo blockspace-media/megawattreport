@@ -1,56 +1,96 @@
-// POST /api/subscribe — the only server-side piece.
-// Holds the beehiiv API key so it never appears in the page source.
-// Deploys automatically on Vercel as a serverless function.
+// POST /api/subscribe
+// Adds a subscriber to Beehiiv and enrolls them in the Megawatt Report automation.
 
-const PUBLICATION_ID = 'pub_c08760ed-e3d3-4932-a673-547e90852451'; // Blockspace
-const CAMPAIGN = 'megawatt-report'; // must match the automation trigger
+const PUBLICATION_ID =
+  'pub_c08760ed-e3d3-4932-a673-547e90852451';
+
+const AUTOMATION_ID =
+  'aut_8ec5ca18-2868-4beb-9f45-e66a17d40fda';
+
+const CAMPAIGN = 'megawatt-report';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({
+      error: 'Method not allowed',
+    });
   }
 
   const { email, utm_source, utm_medium } = req.body || {};
 
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  const cleanedEmail =
+    typeof email === 'string'
+      ? email.trim().toLowerCase()
+      : '';
+
+  const isValidEmail =
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanedEmail);
+
+  if (!isValidEmail) {
+    return res.status(400).json({
+      error: 'Please enter a valid email address.',
+    });
   }
 
   if (!process.env.BEEHIIV_API_KEY) {
     console.error('BEEHIIV_API_KEY is not set');
-    return res.status(500).json({ error: 'Server is not configured yet.' });
+
+    return res.status(500).json({
+      error: 'Server is not configured yet.',
+    });
   }
 
   try {
-    const r = await fetch(
+    const response = await fetch(
       `https://api.beehiiv.com/v2/publications/${PUBLICATION_ID}/subscriptions`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.BEEHIIV_API_KEY}`,
+          Authorization: `Bearer ${process.env.BEEHIIV_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email,
-          reactivate_existing: true,  // past unsubscribers can still request the report
-          send_welcome_email: false,  // the automation's report email is the welcome
+          email: cleanedEmail,
+          reactivate_existing: true,
+          send_welcome_email: false,
           utm_source: utm_source || 'landing_page',
           utm_medium: utm_medium || 'paid_social',
-          utm_campaign: CAMPAIGN,     // fires the automation
+          utm_campaign: CAMPAIGN,
+          automation_ids: [AUTOMATION_ID],
         }),
       }
     );
 
-    const data = await r.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
 
-    if (!r.ok) {
-      console.error('beehiiv error', r.status, data);
-      return res.status(502).json({ error: 'Something went wrong on our end — try again in a moment.' });
+    if (!response.ok) {
+      console.error('Beehiiv API error:', {
+        status: response.status,
+        data,
+      });
+
+      return res.status(response.status).json({
+        error:
+          data?.errors?.[0]?.message ||
+          data?.message ||
+          'Beehiiv could not process the subscription.',
+      });
     }
 
-    return res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error('subscribe failed', err);
-    return res.status(500).json({ error: 'Something went wrong on our end — try again in a moment.' });
+    console.log('Beehiiv subscription successful:', {
+      email: cleanedEmail,
+      automationId: AUTOMATION_ID,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Subscription created successfully.',
+    });
+  } catch (error) {
+    console.error('Beehiiv subscription request failed:', error);
+
+    return res.status(500).json({
+      error: 'Something went wrong. Please try again.',
+    });
   }
 }
