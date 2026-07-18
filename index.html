@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<script>
+// Pick a variant once per visitor, remember it, redirect instantly.
+// The redirect is local (same domain, same server) so it's ~0ms.
+var v = localStorage.getItem('mw_variant');
+if (!v) {
+  var variants = ['a', 'b', 'c'];
+  v = variants[Math.floor(Math.random() * variants.length)];
+  localStorage.setItem('mw_variant', v);
+}
+window.location.replace('/variant-' + v + '.html');
+</script>
+</head><body></body></html>
